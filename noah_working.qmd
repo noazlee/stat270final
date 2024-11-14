@@ -1,0 +1,22 @@
+---
+title: "Workingdoccasetsuyd2"
+format: html
+editor: visual
+---
+
+```{r setup}
+#| include: false
+# Load necessary packages
+library(tidyverse)
+library(tidymodels)
+library(dplyr)
+library(ggformula)
+library(ggplot2) 
+library(GGally)
+##install.packages("vip")
+library(mosaic)
+library(ranger)
+library(vip)
+library(caret)
+tidymodels_prefer(quiet = TRUE) 
+```
