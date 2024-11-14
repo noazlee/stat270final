@@ -20,3 +20,12 @@ library(vip)
 library(caret)
 tidymodels_prefer(quiet = TRUE) 
 ```
+
+```{r}
+df <- read.csv('conversion_predictors_of_clinically_isolated_syndrome_to_multiple_sclerosis.csv')
+```
+
+```{r}
+df
+```
+
