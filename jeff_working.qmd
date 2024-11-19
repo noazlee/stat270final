@@ -30,6 +30,7 @@ df
 ```
 
 EDA
+
 ```{r}
 
 summary(df)
@@ -37,7 +38,9 @@ summary(df)
 missing_values <- sapply(df, function(x) mosaic::sum(is.na(x)))
 missing_values
 ```
+
 Missing values for Final_EDSS and Initial_EDSS (look into why)
+
 ```{r}
 
 numeric_vars <- df |> 
@@ -63,4 +66,3 @@ ggcorr(numeric_vars, label = TRUE, label_round = 2, label_size = 3, hjust = 0.75
   theme_minimal() +
   labs(title = "Correlation Matrix of Numeric Variables")
 ```
-
