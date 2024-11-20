@@ -262,8 +262,36 @@ summary(pc)
 library(ggfortify)
 autoplot(pc, data=df_new, colour='group')
 ```
+```{r}
+library(ggplot2)
+library(tidyr)
+library(tibble)
 
+factor_loadings <- pc$rotation
 
+factor_loadings_df <- as.data.frame(factor_loadings) |>
+  rownames_to_column(var = "Feature") |>
+  pivot_longer(
+    cols = starts_with("PC"), 
+    names_to = "PC", 
+    values_to = "Loading"
+  )
+
+factor_loadings_df <- factor_loadings_df |>
+  filter(PC %in% c("PC1", "PC2"))
+
+ggplot(factor_loadings_df, aes(x = Loading, y = Feature, fill = Feature)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  facet_wrap(~PC, scales = "free") +
+  theme_minimal() +
+  labs(
+    title = "Factor Loadings for PC1 to PC2",
+    x = "Loading Value",
+    y = "Feature"
+  )
+
+```
+Higher PC1 and PC2 indicates higher probability of positive CDMS.
 
 Latent Class Analysis: Statistical method for finding groups of related cases from multivariate categorical data. Concerned with the structure of classes. Research question: how many latent variables underlie a set of categorical observed variables?
 
