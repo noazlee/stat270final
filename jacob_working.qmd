@@ -19,8 +19,150 @@ library(ranger)
 library(vip)
 library(caret)
 tidymodels_prefer(quiet = TRUE) 
+
+# go to directory
+# git add .
+# git commit -m "some update message"
+# git push
+
 ```
 
 ```{r}
 df <- read.csv('conversion_predictors_of_clinically_isolated_syndrome_to_multiple_sclerosis.csv')
 ```
+
+```{r}
+df$Gender <- as.factor(df$Gender)
+df$Breastfeeding <- as.factor(df$Breastfeeding)
+df$Varicella <- as.factor(df$Varicella)
+df$Initial_Symptom <- as.factor(df$Initial_Symptom)
+df$Mono_or_Polysymptomatic <- as.factor(df$Mono_or_Polysymptomatic)
+df$Oligoclonal_Bands <- as.factor(df$Oligoclonal_Bands)
+df$LLSSEP <- as.factor(df$LLSSEP)
+df$ULSSEP <- as.factor(df$ULSSEP)
+df$VEP <- as.factor(df$VEP)
+df$BAEP <- as.factor(df$BAEP)
+df$Periventricular_MRI <- as.factor(df$Periventricular_MRI)
+df$Cortical_MRI <- as.factor(df$Cortical_MRI)
+df$Infratentorial_MRI <- as.factor(df$Infratentorial_MRI)
+df$Spinal_Cord_MRI <- as.factor(df$Spinal_Cord_MRI)
+df$Initial_EDSS <- as.factor(df$Initial_EDSS)
+df$Final_EDSS <- as.factor(df$Final_EDSS)
+df$group <- as.factor(df$group)
+
+df <- df |> filter(!if_any(Schooling, is.na))
+df <- df |> filter(!if_any(Initial_Symptom, is.na))
+
+
+df <- df %>% filter(Mono_or_Polysymptomatic != 3)
+df <- df %>% filter(Oligoclonal_Bands != 2)
+
+df %>%
+  dplyr::count(Initial_Symptom)
+
+
+```
+
+Logistic regression
+
+
+```{r}
+set.seed(12121)
+df_split <- initial_split(df, prop = 0.75, strata = group)
+df_train <- training(df_split)
+df_test  <- testing(df_split)
+
+
+#initial model selection
+
+model <- glm(group ~ Gender + Age + Schooling + Initial_Symptom + Mono_or_Polysymptomatic + Oligoclonal_Bands  + BAEP + Periventricular_MRI  + Infratentorial_MRI + Spinal_Cord_MRI, data = df_train, family = binomial)
+
+summary(model)
+
+
+# Breastfeeding, Varicella, LLSSEP, ULSSEP, VEP, Cortical
+
+logit_mod <- logistic_reg() |>
+  set_mode("classification") |>
+  set_engine("glm")
+
+df_rec <- recipe(group ~ Gender + Age + Schooling + Initial_Symptom + Mono_or_Polysymptomatic + Oligoclonal_Bands  + BAEP + Periventricular_MRI  + Infratentorial_MRI + Spinal_Cord_MRI, data = df_train, family = binomial) |>
+  step_naomit()
+
+df_logit_wf <- workflow() |>
+  add_recipe(df_rec) |>
+  add_model(logit_mod)
+
+df_fit <- df_logit_wf |> fit(data = df_train)
+
+df_predictions <- augment(df_fit, new_data = df_test)
+
+conf_mat(df_predictions, truth = group, estimate = .pred_class)
+
+accuracy(df_predictions, group, .pred_class)
+
+```
+75% accuracy
+
+
+KNN
+
+```{r}
+set.seed(34039)
+df_split_2 <- initial_split(df, prop = 0.75, strata = group)
+df_train_2 <- training(df_split)
+df_test_2  <- testing(df_split)
+
+knn_model <- nearest_neighbor(neighbors = tune()) |>
+    set_engine("kknn") |>
+    set_mode("classification")
+
+my_rec <- recipe(group ~ Gender + Age + Schooling + Initial_Symptom + Mono_or_Polysymptomatic + Oligoclonal_Bands  + BAEP + Periventricular_MRI  + Infratentorial_MRI + Spinal_Cord_MRI, data = df_train_2, family = binomial)
+
+knn_wf <- workflow() |>
+    add_recipe(my_rec) |>
+    add_model(knn_model) 
+
+my_folds <- vfold_cv(df_train_2, v = 10)
+
+k_grid <- grid_regular(neighbors(range = c(1, 21)), levels = 11)
+
+cv_results <- tune_grid(object = knn_wf, resamples = my_folds, grid = k_grid)
+
+# You only really need one of the below, but this is for reference
+collect_metrics(cv_results)
+
+autoplot(cv_results,  metric = "accuracy")
+
+collect_metrics(cv_results) 
+
+ #9 NN is optimal
+```
+
+```{r}
+# Model specification
+knn_spec <- nearest_neighbor(neighbors = 9) |> 
+  set_mode("classification") |> 
+  set_engine("kknn")
+
+# Recipe
+knn_rec <- recipe(group ~ Gender + Age + Schooling + Initial_Symptom + Mono_or_Polysymptomatic + Oligoclonal_Bands  + BAEP + Periventricular_MRI  + Infratentorial_MRI + Spinal_Cord_MRI, data = df_train_2, family = binomial) |> 
+  step_naomit()
+  
+# Workflow
+knn_wf <- workflow() |>
+  add_recipe(knn_rec) |>
+  add_model(knn_spec)
+
+# Fit model to training set
+knn_model <- fit(knn_wf, df_train_2)
+
+# Make predictions for the test set
+knn_preds <- augment(knn_model, new_data = df_test_2)
+
+conf_mat(knn_preds, truth = group, estimate = .pred_class)
+
+accuracy(knn_preds, group, .pred_class)
+```
+
+80% accuracy
