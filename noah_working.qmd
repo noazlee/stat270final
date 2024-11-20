@@ -30,10 +30,12 @@ df
 ```
 
 EDA:
+
 ```{r}
 str(df) # All quantitative variables - misleading
 # everything except for age and schooling should be qualitative.
 ```
+
 ```{r}
 df$Gender <- as.factor(df$Gender)
 df$Breastfeeding <- as.factor(df$Breastfeeding)
@@ -62,12 +64,15 @@ str(df)
 missing_counts <- colSums(is.na(df))
 missing_counts
 ```
+
 Many missing values for EDSS (148 of 273 observations - over 54%) - however, there are likely more missing values with val = 3.
 
 MISSING VALUES THAT ARE NOT NA (VALUE=UNKNOWN)
+
 ```{r}
 mosaic::count(df$Breastfeeding==3)
 ```
+
 85 records missing
 
 ```{r}
@@ -86,7 +91,6 @@ mosaic::count(df$Oligoclonal_Bands==2)
 df$X <- NULL
 ```
 
-
 ```{r}
 df <- df |> filter(!if_any(Schooling, is.na))
 df <- df |> filter(!if_any(Initial_Symptom, is.na))
@@ -104,6 +108,7 @@ ggplot(df, aes(x = group)) +
   labs(x = "Group", y = "Frequency", title = "Frequency of Each Group") +
   theme_minimal()
 ```
+
 Roughly equal distribution of target variable.
 
 ```{r}
@@ -117,9 +122,8 @@ ggplot(df, aes(x = Gender, fill = group)) +
   labs(x = "Gender", y = "Frequency", title = "Frequency of Each Group by Gender") +
   theme_minimal()
 ```
-GROUP: 1 = CDMS (125), 2 = non-CDMS (146)
-GENDER: 1 = Male (105), 2 = Female(166)
-Observation: More female participants tested negative for CDMS despite prior studies indicating that CDMS occurs twice as often in women than in men.
+
+GROUP: 1 = CDMS (125), 2 = non-CDMS (146) GENDER: 1 = Male (105), 2 = Female(166) Observation: More female participants tested negative for CDMS despite prior studies indicating that CDMS occurs twice as often in women than in men.
 
 ```{r}
 freq_table <- df|>
@@ -132,6 +136,7 @@ ggplot(df, aes(x = Varicella, fill = group)) +
   labs(x = "Varicella", y = "Frequency", title = "Frequency of Each Group by Varicella") +
   theme_minimal()
 ```
+
 Those who tested negative with Varicella were observed to have CDMS at a higher frequeny
 
 ```{r}
@@ -169,6 +174,7 @@ ggplot(freq_table, aes(x = Schooling_Range, y = Frequency, fill = group)) +
   labs(x = "Schooling Range (Years)", y = "Frequency", title = "Frequency of CDMS by Schooling Range") +
   theme_minimal()
 ```
+
 15-20+ years of schooling seemed to indicate higher risk of CDMS - maybe due to their age?
 
 ```{r}
@@ -191,9 +197,12 @@ ggplot(freq_table, aes(x = Age_Range, y = Frequency, fill = group)) +
   labs(x = "Schooling Range (Years)", y = "Frequency", title = "Frequency of CDMS by Schooling Range") +
   theme_minimal()
 ```
+
 Ages 20-35 seemed to have the highest frequency of CDMS.
 
 UNSUPERVISED LEARNING:
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 
 PCA but we make dummy variables for analysis:
 Stuff to consider: What do we do with unknowns? (val = 3) - is it okay to just impute median?
@@ -341,3 +350,7 @@ truth_table
 ```
 Look at diagram for 'class 3' - more likely to yield positive CDMS.
 
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes

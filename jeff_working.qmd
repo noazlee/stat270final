@@ -13,11 +13,14 @@ library(dplyr)
 library(ggformula)
 library(ggplot2) 
 library(GGally)
-##install.packages("vip")
+install.packages("xgboost")
 library(mosaic)
 library(ranger)
 library(vip)
-library(caret)
+library(tune)
+library(parsnip)
+library("xgboost")
+
 tidymodels_prefer(quiet = TRUE) 
 ```
 
@@ -28,6 +31,35 @@ df
 
 ##Group is repsonse, 1 is diagnosed, 0 is not diagnsoed
 ```
+```{r}
+df$Gender <- as.factor(df$Gender)
+df$Breastfeeding <- as.factor(df$Breastfeeding)
+df$Varicella <- as.factor(df$Varicella)
+df$Initial_Symptom <- as.factor(df$Initial_Symptom)
+df$Mono_or_Polysymptomatic <- as.factor(df$Mono_or_Polysymptomatic)
+df$Oligoclonal_Bands <- as.factor(df$Oligoclonal_Bands)
+df$LLSSEP <- as.factor(df$LLSSEP)
+df$ULSSEP <- as.factor(df$ULSSEP)
+df$VEP <- as.factor(df$VEP)
+df$BAEP <- as.factor(df$BAEP)
+df$Periventricular_MRI <- as.factor(df$Periventricular_MRI)
+df$Cortical_MRI <- as.factor(df$Cortical_MRI)
+df$Infratentorial_MRI <- as.factor(df$Infratentorial_MRI)
+df$Spinal_Cord_MRI <- as.factor(df$Spinal_Cord_MRI)
+df$Initial_EDSS <- as.factor(df$Initial_EDSS)
+df$Final_EDSS <- as.factor(df$Final_EDSS)
+df$group <- as.factor(df$group)
+```
+
+```{r}
+df$X <- NULL
+```
+
+```{r}
+df <- df |> filter(!if_any(Schooling, is.na))
+df <- df |> filter(!if_any(Initial_Symptom, is.na))
+```
+
 
 EDA
 
@@ -66,3 +98,170 @@ ggcorr(numeric_vars, label = TRUE, label_round = 2, label_size = 3, hjust = 0.75
   theme_minimal() +
   labs(title = "Correlation Matrix of Numeric Variables")
 ```
+<<<<<<< Updated upstream
+=======
+
+TREE MODELS:
+```{r}
+
+set.seed(11012024)
+data_split <- initial_split(df, prop = 0.7, strata = group)
+train_data <- training(data_split)
+test_data<- testing(data_split)
+
+test_val_split <- initial_split(test_data, prop = 0.5, strata = group)
+validation_data <- training(test_val_split)
+testing_data <- testing(test_val_split)
+
+# Check the distribution
+prop.table(table(train_data$group))
+prop.table(table(test_data$group))
+```
+
+
+```{r}
+set.seed(11012024)
+
+ranger_recipe <- 
+  recipe(formula = group ~ ., data = train_data)|>
+ step_unknown(all_nominal_predictors(), new_level = "missing") |> ## from chat I don't know why it wont run without this, something to do with the missing values from the dataset. 
+  step_dummy(all_nominal_predictors()) 
+
+ranger_folds <- vfold_cv(train_data, v = 10, strata = group)
+
+rf_spec_tune <- 
+rand_forest(trees = tune(), mtry = tune()) |>
+set_mode("classification") |>
+set_engine("ranger", importance = "impurity")
+
+ranger_workflow_tune <- 
+  workflow() |>
+  add_recipe(ranger_recipe) |>
+  add_model(rf_spec_tune) 
+
+ranger_grid <- grid_regular(
+  trees(range = c(1, 200)),   
+  mtry(range = c(5, 30)), # How do you chose these values
+  levels = 5
+)
+
+ranger_tune <- tune_grid(
+  ranger_workflow_tune, 
+  resamples = ranger_folds, 
+  grid = ranger_grid
+)
+
+best_cc <- select_by_one_std_err(
+  ranger_tune, 
+  metric = "roc_auc", 
+  trees, 
+  mtry
+)
+
+best_cc
+```
+updated tuned best random forest model
+
+```{r}
+rf_spec_best <- 
+  rand_forest(trees = 10, mtry = 23) |>
+  set_mode("classification") |>
+  set_engine("ranger", importance = "impurity")
+
+ranger_recipe <- 
+  recipe(formula = group ~ ., data = train_data)|>
+ step_unknown(all_nominal_predictors(), new_level = "missing") |>
+  step_dummy(all_nominal_predictors()) 
+
+ranger_workflow <- workflow() |>
+  add_recipe(ranger_recipe) |>
+  add_model(rf_spec_best) 
+
+
+(rf_fit_best <- fit(ranger_workflow, data = train_data))
+```
+```{r}
+rf_pred_best <- augment(rf_fit_best, new_data = validation_data)
+
+rf_pred_best
+```
+```{r}
+confusion_matrix_best <- table(Predicted = rf_pred_best$.pred_class, True = rf_pred_best$group)
+confusion_matrix_best
+```
+```{r}
+yardstick::roc_auc(
+  data = rf_pred_best,
+  group,
+  .pred_1,
+  event_level = "first"
+)
+```
+```{r}
+vip::vip(rf_fit_best)
+```
+There is deifnitley a problem. The best trees is = 1 from tuning, but I changed to 10 because then Inital_EDSS_missing is the sole best predictor. 
+
+Boosting: Need to update R to run this xgboost so ignore for now. 
+
+```{r}
+  xgboost_recipe <- 
+  recipe(formula = group ~ ., data = train_data) |>
+  step_zv(all_predictors()) 
+
+xgboost_spec <-
+  boost_tree(            
+    trees = 15,          
+    tree_depth = 2,      
+    learn_rate = 0.3     
+  ) |>
+  set_mode("regression") |>
+  set_engine("xgboost") 
+
+xgboost_workflow <- 
+  workflow() |>
+  add_recipe(xgboost_recipe) |>
+  add_model(xgboost_spec) 
+
+xgboost_fit <-
+  fit(xgboost_workflow, data = train_data)
+```
+
+```{r}
+rice_grid <- grid_regular(
+  trees(range = c(100, 500)), 
+  learn_rate(range = c(-3, -1)), levels = 5
+)
+
+# Data for 10-fold CV
+set.seed(96643)
+price_folds <- vfold_cv(realestate_train, v = 10, strata = price)
+
+# Adding tuning parameters to the model specification
+xgboost_spec <-
+  boost_tree(            
+    trees = tune(),          
+    tree_depth = 2,      
+    learn_rate = tune()     
+  ) |>
+  set_mode("regression") |>
+  set_engine("xgboost") 
+
+xgboost_workflow <- 
+  workflow() |>
+  add_recipe(xgboost_recipe) |>
+  add_model(xgboost_spec) 
+
+xgboost_tune <-
+  tune_grid(
+    xgboost_workflow, 
+    resamples = price_folds, 
+    grid = price_grid
+  )
+```
+
+
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
