@@ -216,6 +216,12 @@ replace_with_mode <- function(x) {
   return(x)
 }
 
+replace_with_mode2 <- function(x) {
+  mode_value <- names(sort(table(x), decreasing = TRUE))[1] # Calculate mode
+  x <- ifelse(x == 2, as.numeric(mode_value), x)
+  return(x)
+}
+
 df_new$Initial_EDSS <- NULL
 df_new$Final_EDSS <- NULL
 
@@ -224,10 +230,11 @@ df_new <- df_new |>
     Breastfeeding = replace_with_mode(Breastfeeding),
     Varicella = replace_with_mode(Varicella),
     Mono_or_Polysymptomatic = replace_with_mode(Mono_or_Polysymptomatic),
-    Oligoclonal_Bands = replace_with_mode(Oligoclonal_Bands)
+    Oligoclonal_Bands = replace_with_mode2(Oligoclonal_Bands)
   )|>
   na.omit()
 ```
+
 
 ```{r}
 group <- df_new$group
@@ -237,12 +244,14 @@ df_new <- df_new |>
     Breastfeeding = replace_with_mode(Breastfeeding),
     Varicella = replace_with_mode(Varicella),
     Mono_or_Polysymptomatic = replace_with_mode(Mono_or_Polysymptomatic),
-    Oligoclonal_Bands = replace_with_mode(Oligoclonal_Bands)
+    Oligoclonal_Bands = replace_with_mode2(Oligoclonal_Bands)
   )
 
 df_new <- df_new |>
   mutate(group = group) |>  
   na.omit()
+
+df_new$X <- NULL
 
 numeric_cols <- df_new |>
   select(where(is.numeric))  
@@ -350,12 +359,6 @@ truth_table
 ```
 Look at diagram for 'class 3' - more likely to yield positive CDMS.
 
-<<<<<<< HEAD
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
 MODELLING:
 Naive Bayes / LDA / QDA?
 
@@ -399,7 +402,7 @@ lda_rec <- recipe(group ~ ., data = df) |>
     Breastfeeding = ifelse(Breastfeeding == 3, names(sort(table(Breastfeeding), decreasing = TRUE))[1], Breastfeeding),
     Varicella = ifelse(Varicella == 3, names(sort(table(Varicella), decreasing = TRUE))[1], Varicella),
     Mono_or_Polysymptomatic = ifelse(Mono_or_Polysymptomatic == 3, names(sort(table(Mono_or_Polysymptomatic), decreasing = TRUE))[1], Mono_or_Polysymptomatic),
-    Oligoclonal_Bands = ifelse(Oligoclonal_Bands == 3, names(sort(table(Oligoclonal_Bands), decreasing = TRUE))[1], Oligoclonal_Bands)
+    Oligoclonal_Bands = ifelse(Oligoclonal_Bands == 2, names(sort(table(Oligoclonal_Bands), decreasing = TRUE))[1], Oligoclonal_Bands)
   ) |>
   step_impute_median(all_numeric_predictors()) |>
   step_naomit()
@@ -422,7 +425,7 @@ yardstick::sensitivity(lda_pred, truth = group, estimate = .pred_class) # worse 
 ```
 
 
-QDA:
+QDA - not working 
 ```{r}
 qda_model <- discrim_quad() |> 
   set_engine("MASS") |>
@@ -432,7 +435,7 @@ qda_wf <- workflow() |>
   add_model(qda_model) |>
   add_recipe(lda_rec)
 
-qda_fit <- qda_wf |> fit(data = df_train) # did not work - cov matrix for at least one group is singular or non-invertible - so does not have full rank?
+#qda_fit <- qda_wf |> fit(data = df_train) # did not work - cov matrix for at least one group is singular or non-invertible - so does not have full rank?
 ```
 
 
@@ -454,11 +457,73 @@ nb_fit <- nb_wf |> fit(data = df_train)
 nb_pred <- nb_fit |> augment(new_data = df_validation)
 conf_mat(nb_pred, truth = group, estimate = .pred_class)
 ```
+
 ```{r}
 accuracy(nb_pred, truth = group, estimate = .pred_class)
 yardstick::specificity(nb_pred, truth = group, estimate = .pred_class) # good specificity
 yardstick::sensitivity(nb_pred, truth = group, estimate = .pred_class) # worse sensitivity
 ```
-Better accuracy and sensitivity than lda, about the same specificity.
+Better accuracy and sensitivity and specificity.
 
->>>>>>> dff990443433f933303f359ab1e6df3816dcbdee
+```{r}
+nb_details <- nb_fit$fit
+nb_details
+```
+
+Stochastic Gradient Descent:
+```{r}
+sgd_model <- logistic_reg(penalty = tune(), mixture = tune()) |> 
+  set_engine("glmnet") |>  
+  set_mode("classification")
+
+sgd_recipe <- recipe(group ~ ., data = df_train) |>
+  step_normalize(all_numeric_predictors()) |> 
+  step_impute_median(all_numeric_predictors()) |>  
+  step_dummy(all_nominal_predictors()) 
+
+sgd_wf <- workflow() |> 
+  add_model(sgd_model) |> 
+  add_recipe(sgd_recipe)
+
+#sgd_fit <- sgd_wf |> 
+  #fit(data = df_train)
+
+my_folds <- vfold_cv(df_train, v = 5)
+df_grid <- grid_regular(penalty(range = c(0.001, 1)), mixture(range=c(0,1)), levels = 10)
+cv_results <- tune_grid(object = sgd_wf, resamples = my_folds, grid = df_grid) 
+```
+
+```{r}
+autoplot(cv_results,  metric = "accuracy") 
+show_best(cv_results, metric = "accuracy")
+```
+
+```{r}
+sgd_model <- logistic_reg(penalty = 1, mixture = 0) |> 
+  set_engine("glmnet") |>  
+  set_mode("classification")
+
+sgd_recipe <- recipe(group ~ ., data = df_train) |>
+  step_normalize(all_numeric_predictors()) |> 
+  step_impute_median(all_numeric_predictors()) |>  
+  step_dummy(all_nominal_predictors()) 
+
+sgd_wf <- workflow() |> 
+  add_model(sgd_model) |> 
+  add_recipe(sgd_recipe)
+
+sgd_fit <- sgd_wf |> 
+  fit(data = df_train)
+```
+
+```{r}
+sgd_pred <- sgd_fit |> augment(new_data = df_validation)
+conf_mat(sgd_pred, truth = group, estimate = .pred_class)
+```
+```{r}
+accuracy(sgd_pred, truth = group, estimate = .pred_class)
+yardstick::specificity(sgd_pred, truth = group, estimate = .pred_class)
+yardstick::sensitivity(sgd_pred, truth = group, estimate = .pred_class)
+```
+
+
