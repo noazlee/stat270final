@@ -341,3 +341,108 @@ truth_table
 ```
 Look at diagram for 'class 3' - more likely to yield positive CDMS.
 
+MODELLING:
+Naive Bayes / LDA / QDA?
+
+LDA:
+```{r}
+set.seed(8080)
+df_split <- df |> initial_split(prop = 0.7, strata = group)
+df_train <- training(df_split)
+df_testing <- testing(df_split)
+df_testing_split <- df_testing |> initial_split(prop = 0.5, strata = group)
+df_test <- testing(df_testing_split)
+df_validation <- training(df_testing_split)
+```
+
+```{r}
+head(df_train)
+```
+
+
+```{r}
+library(GGally)
+
+df_train |> 
+  ggpairs(aes(colour = group, alpha=0.4), 
+          columns = 1:5,
+          lower = list(continuous = wrap("points")), 
+          upper = list(continuous = wrap("points"))) +
+  ggthemes::scale_fill_colorblind() +
+  ggthemes::scale_color_colorblind() +
+  theme_bw()
+```
+
+```{r}
+library(discrim)
+lda_model <- discrim_linear() |> 
+  set_engine("MASS") |>
+  set_mode("classification")
+
+lda_rec <- recipe(group ~ ., data = df) |>
+  step_mutate(
+    Breastfeeding = ifelse(Breastfeeding == 3, names(sort(table(Breastfeeding), decreasing = TRUE))[1], Breastfeeding),
+    Varicella = ifelse(Varicella == 3, names(sort(table(Varicella), decreasing = TRUE))[1], Varicella),
+    Mono_or_Polysymptomatic = ifelse(Mono_or_Polysymptomatic == 3, names(sort(table(Mono_or_Polysymptomatic), decreasing = TRUE))[1], Mono_or_Polysymptomatic),
+    Oligoclonal_Bands = ifelse(Oligoclonal_Bands == 3, names(sort(table(Oligoclonal_Bands), decreasing = TRUE))[1], Oligoclonal_Bands)
+  ) |>
+  step_impute_median(all_numeric_predictors()) |>
+  step_naomit()
+
+lda_wf <- workflow() |>
+  add_model(lda_model) |>
+  add_recipe(lda_rec)
+
+lda_fit <- lda_wf |> fit(data = df_train)
+```
+
+```{r}
+lda_pred <- lda_fit |> augment(new_data = df_validation)
+conf_mat(lda_pred, truth = group, estimate = .pred_class)
+```
+```{r}
+accuracy(lda_pred, truth = group, estimate = .pred_class)
+yardstick::specificity(lda_pred, truth = group, estimate = .pred_class) # good specificity
+yardstick::sensitivity(lda_pred, truth = group, estimate = .pred_class) # worse sensitivity
+```
+
+
+QDA:
+```{r}
+qda_model <- discrim_quad() |> 
+  set_engine("MASS") |>
+  set_mode("classification")
+
+qda_wf <- workflow() |>
+  add_model(qda_model) |>
+  add_recipe(lda_rec)
+
+qda_fit <- qda_wf |> fit(data = df_train) # did not work - cov matrix for at least one group is singular or non-invertible - so does not have full rank?
+```
+
+
+Naive Bayes:
+```{r}
+library(klaR)
+nb_model <- naive_Bayes() |> 
+  set_engine("klaR") |>
+  set_mode("classification")
+
+nb_wf <- workflow() |>
+  add_model(nb_model) |>
+  add_recipe(lda_rec)
+
+nb_fit <- nb_wf |> fit(data = df_train)
+```
+
+```{r}
+nb_pred <- nb_fit |> augment(new_data = df_validation)
+conf_mat(lda_pred, truth = group, estimate = .pred_class)
+```
+```{r}
+accuracy(nb_pred, truth = group, estimate = .pred_class)
+yardstick::specificity(nb_pred, truth = group, estimate = .pred_class) # good specificity
+yardstick::sensitivity(nb_pred, truth = group, estimate = .pred_class) # worse sensitivity
+```
+Better accuracy and sensitivity than lda, about the same specificity.
+
