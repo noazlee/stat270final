@@ -437,7 +437,7 @@ nb_fit <- nb_wf |> fit(data = df_train)
 
 ```{r}
 nb_pred <- nb_fit |> augment(new_data = df_validation)
-conf_mat(lda_pred, truth = group, estimate = .pred_class)
+conf_mat(nb_pred, truth = group, estimate = .pred_class)
 ```
 ```{r}
 accuracy(nb_pred, truth = group, estimate = .pred_class)
