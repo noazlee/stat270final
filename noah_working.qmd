@@ -200,17 +200,68 @@ Stuff to consider: What do we do with unknowns? (val = 3) - is it okay to just i
 
 ```{r}
 df_new <- read.csv('conversion_predictors_of_clinically_isolated_syndrome_to_multiple_sclerosis.csv')
+
+replace_with_mode <- function(x) {
+  mode_value <- names(sort(table(x), decreasing = TRUE))[1] # Calculate mode
+  x <- ifelse(x == 3, as.numeric(mode_value), x)
+  return(x)
+}
+
+df_new$Initial_EDSS <- NULL
+df_new$Final_EDSS <- NULL
+
+df_new <- df_new |>
+  mutate(
+    Breastfeeding = replace_with_mode(Breastfeeding),
+    Varicella = replace_with_mode(Varicella),
+    Mono_or_Polysymptomatic = replace_with_mode(Mono_or_Polysymptomatic),
+    Oligoclonal_Bands = replace_with_mode(Oligoclonal_Bands)
+  )|>
+  na.omit()
+```
+
+```{r}
+group <- df_new$group
+
+df_new <- df_new |>
+  mutate(
+    Breastfeeding = replace_with_mode(Breastfeeding),
+    Varicella = replace_with_mode(Varicella),
+    Mono_or_Polysymptomatic = replace_with_mode(Mono_or_Polysymptomatic),
+    Oligoclonal_Bands = replace_with_mode(Oligoclonal_Bands)
+  )
+
+df_new <- df_new |>
+  mutate(group = group) |>  
+  na.omit()
+
+numeric_cols <- df_new |>
+  select(where(is.numeric))  
+non_numeric_cols <- df_new |>
+  select(-where(is.numeric)) 
+
+scaled_numeric_cols <- as.data.frame(scale(numeric_cols))
+
+df_new <- cbind(scaled_numeric_cols, non_numeric_cols)
+df_new$group <- group
+
 str(df_new)
 ```
 
-
 ```{r}
-
-pc <- df2 |>
-  select(-Age) |>  
+pc <- df_new |>
+  select(-group) |>  
   prcomp()
 ```
 
+```{r}
+summary(pc)
+```
+
+```{r}
+library(ggfortify)
+autoplot(pc, data=df_new, colour='group')
+```
 
 
 
@@ -223,6 +274,9 @@ replace_with_mode <- function(x) {
   return(x)
 }
 
+df$Initial_EDSS <- NULL
+df$Final_EDSS <- NULL
+
 df2 <- df |>
   mutate(
     Breastfeeding = replace_with_mode(Breastfeeding),
@@ -231,21 +285,31 @@ df2 <- df |>
     Oligoclonal_Bands = replace_with_mode(Oligoclonal_Bands)
   ) |>
   na.omit()
-df2$group<-NULL
 str(df2)
 ```
 
 
 ```{r}
 library(poLCA)
-f <- cbind(Gender, Breastfeeding, Varicella, Initial_Symptom, Mono_or_Polysymptomatic, Oligoclonal_Bands, LLSSEP, ULSSEP, VEP, BAEP, Periventricular_MRI, Cortical_MRI, Infratentorial_MRI, Spinal_Cord_MRI)~1
+f <- cbind(Gender, Breastfeeding, Varicella, Mono_or_Polysymptomatic, Oligoclonal_Bands, LLSSEP, ULSSEP, VEP, BAEP, Periventricular_MRI, Cortical_MRI, Infratentorial_MRI, Spinal_Cord_MRI)~1
 m1 <- poLCA(f, data=df2, nclass=2, graphs=TRUE, na.rm=TRUE)
 ```
 
 ```{r}
-m2 <- poLCA(f, data=df2, nclass=3, graphs=TRUE, na.rm=TRUE)
+df2$latent_class_m1 <- m1$predclass
+truth_table <- table(Predicted = df2$latent_class_m1, Actual = df2$group)
+truth_table
+```
+63% accurate.
+
+
+```{r}
+m2 <- poLCA(f, data=df2, nclass=3, graphs=TRUE, na.rm=TRUE) # removing initial_symptoms improved it alot
 ```
 ```{r}
-m3 <- poLCA(f, data=df2, nclass=4, graphs=TRUE, na.rm=TRUE)
+df2$latent_class_m2 <- m2$predclass
+truth_table <- table(Predicted = df2$latent_class_m2, Actual = df2$group)
+truth_table
 ```
+Look at diagram for 'class 3' - more likely to yield positive CDMS.
 
