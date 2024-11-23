@@ -13,11 +13,15 @@ library(dplyr)
 library(ggformula)
 library(ggplot2) 
 library(GGally)
-##install.packages("vip")
+install.packages("tune")
 library(mosaic)
 library(ranger)
 library(vip)
-library(caret)
+library(tune)
+library(parsnip)
+library(xgboost)
+
+
 tidymodels_prefer(quiet = TRUE) 
 ```
 
@@ -26,8 +30,50 @@ df <- read.csv('conversion_predictors_of_clinically_isolated_syndrome_to_multipl
 
 df
 
+df$Initial_EDSS <- NULL
+df$Final_EDSS <- NULL
+
+df <- df |> filter(Oligoclonal_Bands != 2)
+df <- df |> filter(Breastfeeding != 3)
+df <- df |> filter(Varicella != 3)
+df <- df |> filter(Mono_or_Polysymptomatic != 3)
+df <- df |> filter(Oligoclonal_Bands != 3)
+df <- df |> filter(Oligoclonal_Bands != 3)
+
+
 ##Group is repsonse, 1 is diagnosed, 0 is not diagnsoed
+
+str(df)
 ```
+Oligclonal_bands get rid of 2
+```{r}
+df$Gender <- as.factor(df$Gender)
+df$Breastfeeding <- as.factor(df$Breastfeeding)
+df$Varicella <- as.factor(df$Varicella)
+df$Initial_Symptom <- as.factor(df$Initial_Symptom)
+df$Mono_or_Polysymptomatic <- as.factor(df$Mono_or_Polysymptomatic)
+df$Oligoclonal_Bands <- as.factor(df$Oligoclonal_Bands)
+df$LLSSEP <- as.factor(df$LLSSEP)
+df$ULSSEP <- as.factor(df$ULSSEP)
+df$VEP <- as.factor(df$VEP)
+df$BAEP <- as.factor(df$BAEP)
+df$Periventricular_MRI <- as.factor(df$Periventricular_MRI)
+df$Cortical_MRI <- as.factor(df$Cortical_MRI)
+df$Infratentorial_MRI <- as.factor(df$Infratentorial_MRI)
+df$Spinal_Cord_MRI <- as.factor(df$Spinal_Cord_MRI)
+
+df$group <- as.factor(df$group)
+```
+
+```{r}
+df$X <- NULL
+```
+
+```{r}
+df <- df |> filter(!if_any(Schooling, is.na))
+df <- df |> filter(!if_any(Initial_Symptom, is.na))
+```
+
 
 EDA
 
@@ -66,3 +112,272 @@ ggcorr(numeric_vars, label = TRUE, label_round = 2, label_size = 3, hjust = 0.75
   theme_minimal() +
   labs(title = "Correlation Matrix of Numeric Variables")
 ```
+<<<<<<< Updated upstream
+=======
+
+TREE MODELS:
+```{r}
+
+set.seed(11012024)
+data_split <- initial_split(df, prop = 0.7, strata = group)
+train_data <- training(data_split)
+test_data<- testing(data_split)
+
+test_val_split <- initial_split(test_data, prop = 0.5, strata = group)
+validation_data <- training(test_val_split)
+testing_data <- testing(test_val_split)
+
+# Check the distribution
+prop.table(table(train_data$group))
+prop.table(table(test_data$group))
+```
+
+
+```{r}
+set.seed(11012024)
+
+ranger_recipe <- 
+  recipe(formula = group ~ ., data = train_data)|>
+ step_unknown(all_nominal_predictors(), new_level = "missing") |> ## from chat I don't know why it wont run without this, something to do with the missing values from the dataset. 
+  step_dummy(all_nominal_predictors()) 
+
+ranger_folds <- vfold_cv(train_data, v = 10, strata = group)
+
+rf_spec_tune <- 
+rand_forest(trees = tune(), mtry = tune()) |>
+set_mode("classification") |>
+set_engine("ranger", importance = "impurity")
+
+ranger_workflow_tune <- 
+  workflow() |>
+  add_recipe(ranger_recipe) |>
+  add_model(rf_spec_tune) 
+
+ranger_grid <- grid_regular(
+  trees(range = c(1, 200)),   
+  mtry(range = c(3, 5 )), # How do you chose these values
+  levels = 5
+)
+
+ranger_tune <- tune_grid(
+  ranger_workflow_tune, 
+  resamples = ranger_folds, 
+  grid = ranger_grid
+)
+
+best_cc <- select_by_one_std_err(
+  ranger_tune, 
+  metric = "roc_auc", 
+  trees, 
+  mtry
+)
+
+best_cc
+```
+
+Gave us Mtry = 11, trees = 50 from  trees(range = c(1, 200)),   mtry(range = c(3, 30 )), 
+
+Mtry = 2, trees = 50 from trees(range = c(1, 200)),   mtry(range = c(3, 5 ))
+
+
+updated tuned best random forest model
+
+```{r}
+
+set.seed(1234)
+rf_spec_best <- 
+  rand_forest(trees = 50, mtry = 2) |>
+  set_mode("classification") |>
+  set_engine("ranger", importance = "impurity")
+
+ranger_recipe <- 
+  recipe(formula = group ~ ., data = train_data)|>
+ step_unknown(all_nominal_predictors(), new_level = "missing") |>
+  step_dummy(all_nominal_predictors()) 
+
+ranger_workflow <- workflow() |>
+  add_recipe(ranger_recipe) |>
+  add_model(rf_spec_best) 
+
+
+(rf_fit_best <- fit(ranger_workflow, data = train_data))
+```
+```{r}
+rf_pred_best <- augment(rf_fit_best, new_data = validation_data)
+
+rf_pred_best
+```
+```{r}
+confusion_matrix_best <- table(Predicted = rf_pred_best$.pred_class, True = rf_pred_best$group)
+confusion_matrix_best
+
+(14+10)/(14+10+1+2)
+```
+Accuracy: 0.8888889 as of rn hopefully the set.seed works
+```{r}
+yardstick::roc_auc(
+  data = rf_pred_best,
+  group,
+  .pred_1,
+  event_level = "first"
+)
+```
+```{r}
+vip::vip(rf_fit_best)
+```
+
+Boosting: Need to update R to run this xgboost so ignore for now. 
+
+```{r}
+##str(train_data)
+
+train_data2 <- train_data
+
+train_data2$Gender <- as.numeric(train_data2$Gender)
+train_data2$Breastfeeding <- as.numeric(train_data2$Breastfeeding)
+train_data2$Varicella <- as.numeric(train_data2$Varicella)
+train_data2$Initial_Symptom <- as.numeric(train_data2$Initial_Symptom)
+train_data2$Mono_or_Polysymptomatic <- as.numeric(train_data2$Mono_or_Polysymptomatic)
+train_data2$Oligoclonal_Bands <- as.numeric(train_data2$Oligoclonal_Bands)
+train_data2$LLSSEP <- as.numeric(train_data2$LLSSEP)
+train_data2$ULSSEP <- as.numeric(train_data2$ULSSEP)
+train_data2$VEP <- as.numeric(train_data2$VEP)
+train_data2$BAEP <- as.numeric(train_data2$BAEP)
+train_data2$Periventricular_MRI <- as.numeric(train_data2$Periventricular_MRI)
+train_data2$Cortical_MRI <- as.numeric(train_data2$Cortical_MRI)
+train_data2$Infratentorial_MRI <- as.numeric(train_data2$Infratentorial_MRI)
+train_data2$Spinal_Cord_MRI <- as.numeric(train_data2$Spinal_Cord_MRI)
+
+train_data2$group <- as.factor(train_data2$group)
+
+str(train_data2)
+```
+
+
+```{r}
+xgboost_recipe <- 
+recipe(formula = group ~ ., data = train_data2) |>
+step_zv(all_predictors()) 
+
+xgboost_spec <-
+  boost_tree(            
+    trees = 15,          
+    tree_depth = 2,      
+    learn_rate = 0.3     
+  ) |>
+  set_mode("classification") |>
+  set_engine("xgboost") 
+
+xgboost_workflow <- 
+  workflow() |>
+  add_recipe(xgboost_recipe) |>
+  add_model(xgboost_spec) 
+
+xgboost_fit <-
+  fit(xgboost_workflow, data = train_data2)
+```
+
+```{r}
+rice_grid <- grid_regular(
+  trees(range = c(100, 500)), 
+  learn_rate(range = c(-3, -1)), 
+    tree_depth((range = c(1, 5))
+             ), levels = 5
+)
+
+set.seed(96643)
+tune_folds <- vfold_cv(train_data2, v = 10, strata = group)
+
+# Adding tuning parameters to the model specification
+xgboost_spec <-
+  boost_tree(            
+    trees = tune(),          
+    tree_depth = tune(),      
+    learn_rate = tune() 
+  ) |>
+  set_mode("classification") |>
+  set_engine("xgboost") 
+
+xgboost_workflow <- 
+  workflow() |>
+  add_recipe(xgboost_recipe) |>
+  add_model(xgboost_spec) 
+
+xgboost_tune <-
+  tune_grid(
+    xgboost_workflow, 
+    resamples = tune_folds, 
+    grid = rice_grid
+  )
+```
+
+```{r}
+select_best(xgboost_tune, metric = "accuracy")
+select_best(xgboost_tune, metric = "roc_auc")
+
+```
+Updated Best Boosting model:
+
+```{r}
+xgboost_recipe_best <- 
+recipe(formula = group ~ ., data = train_data2) |>
+step_zv(all_predictors()) 
+
+xgboost_spec_best <-
+  boost_tree(            
+    trees = 100,          
+    tree_depth = 3,      
+    learn_rate = 0.001     
+  ) |>
+  set_mode("classification") |>
+  set_engine("xgboost") 
+
+xgboost_workflow_best <- 
+  workflow() |>
+  add_recipe(xgboost_recipe_best) |>
+  add_model(xgboost_spec_best) 
+
+```
+
+```{r}
+validation_data2 <- validation_data
+
+validation_data2$Gender <- as.numeric(validation_data2$Gender)
+validation_data2$Breastfeeding <- as.numeric(validation_data2$Breastfeeding)
+validation_data2$Varicella <- as.numeric(validation_data2$Varicella)
+validation_data2$Initial_Symptom <- as.numeric(validation_data2$Initial_Symptom)
+validation_data2$Mono_or_Polysymptomatic <- as.numeric(validation_data2$Mono_or_Polysymptomatic)
+validation_data2$Oligoclonal_Bands <- as.numeric(validation_data2$Oligoclonal_Bands)
+validation_data2$LLSSEP <- as.numeric(validation_data2$LLSSEP)
+validation_data2$ULSSEP <- as.numeric(validation_data2$ULSSEP)
+validation_data2$VEP <- as.numeric(validation_data2$VEP)
+validation_data2$BAEP <- as.numeric(validation_data2$BAEP)
+validation_data2$Periventricular_MRI <- as.numeric(validation_data2$Periventricular_MRI)
+validation_data2$Cortical_MRI <- as.numeric(validation_data2$Cortical_MRI)
+validation_data2$Infratentorial_MRI <- as.numeric(validation_data2$Infratentorial_MRI)
+validation_data2$Spinal_Cord_MRI <- as.numeric(validation_data2$Spinal_Cord_MRI)
+
+validation_data2$group <- as.factor(validation_data2$group)
+
+str(validation_data2)
+```
+
+```{r}
+best_boost <- fit(xgboost_workflow_best, data = train_data2)
+
+vip(best_boost)
+
+boost_preds<- augment(best_boost, new_data = validation_data2)
+
+confusion_matrix <- table(Predicted = boost_preds$.pred_class, True = boost_preds$group)
+confusion_matrix
+```
+```{r}
+(12+8)/(12+8+4+3)
+```
+Accuracy: 0.7407407
+
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
