@@ -186,15 +186,13 @@ Bad accuracy - 68%
 
 
 
-
-
 LDA:
 ```{r}
 lda_model <- discrim_linear() |> 
   set_engine("MASS") |>
   set_mode("classification")
 
-lda_rec <- recipe(group ~ ., data = df_train) |>
+lda_rec <- recipe(group ~ ., data = df_train) |> # LDA and NB performed better on validation set when all predictors were included compared to only using predictors informed by PCA.
   step_impute_median(all_numeric_predictors())
 
 lda_wf <- workflow() |>
@@ -246,6 +244,7 @@ Better accuracy, specificity and sensitivity than LDA.
 
 ```{r}
 nb_details <- nb_fit$fit # Run later for interpretability of naive bayes
+nb_details
 ```
 
 
