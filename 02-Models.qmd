@@ -325,3 +325,9 @@ yardstick::specificity(rf_pred_best, truth = group, estimate = .pred_class)
 yardstick::sensitivity(rf_pred_best, truth = group, estimate = .pred_class) 
 ```
 metrics: worse than nb slightly
+
+```{r}
+# Most important variables in determining CDMS in Random Forest
+vip::vip(rf_fit_best)
+```
+
