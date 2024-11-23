@@ -1,0 +1,55 @@
+---
+title: "STAT 270 - Final - 02 Models"
+subtitle: "Jeff Kong, Noah Lee, Jacob Ventura"
+format: pdf
+editor: visual
+markdown: 
+    wrap: 72
+---
+
+```{r}
+# Data preprocessing - copied from EDA section
+df <- read.csv('conversion_predictors_of_clinically_isolated_syndrome_to_multiple_sclerosis.csv')
+df$Gender <- as.factor(df$Gender)
+df$Initial_Symptom <- as.factor(df$Initial_Symptom)
+df$LLSSEP <- as.factor(df$LLSSEP)
+df$ULSSEP <- as.factor(df$ULSSEP)
+df$VEP <- as.factor(df$VEP)
+df$BAEP <- as.factor(df$BAEP)
+df$Periventricular_MRI <- as.factor(df$Periventricular_MRI)
+df$Cortical_MRI <- as.factor(df$Cortical_MRI)
+df$Infratentorial_MRI <- as.factor(df$Infratentorial_MRI)
+df$Spinal_Cord_MRI <- as.factor(df$Spinal_Cord_MRI)
+df$Initial_EDSS <- as.factor(df$Initial_EDSS)
+df$Final_EDSS <- as.factor(df$Final_EDSS)
+df$group <- as.factor(df$group)
+
+replace_with_mode <- function(x) {
+  mode_value <- names(sort(table(x), decreasing = TRUE))[1]  
+  x <- ifelse(x == 3, as.numeric(mode_value), x)
+  return(x)
+}
+
+replace_with_mode2 <- function(x) {
+  mode_value <- names(sort(table(x), decreasing = TRUE))[1]
+  x <- ifelse(x == 2, as.numeric(mode_value), x)  
+  return(x)
+}
+
+df <- df |>
+  mutate(
+    Breastfeeding = replace_with_mode(Breastfeeding),
+    Varicella = replace_with_mode(Varicella),
+    Mono_or_Polysymptomatic = replace_with_mode(Mono_or_Polysymptomatic),
+    Oligoclonal_Bands = replace_with_mode2(Oligoclonal_Bands)
+  ) |>
+  na.omit()
+
+df$Breastfeeding <- as.factor(df$Breastfeeding)
+df$Varicella <- as.factor(df$Varicella)
+df$Mono_or_Polysymptomatic <- as.factor(df$Mono_or_Polysymptomatic)
+df$Oligoclonal_Bands <- as.factor(df$Oligoclonal_Bands)
+```
+
+
+

@@ -1,0 +1,295 @@
+---
+title: "STAT 270 - Final - 01 EDA"
+subtitle: "Jeff Kong, Noah Lee, Jacob Ventura"
+format: pdf
+editor: visual
+markdown: 
+    wrap: 72
+---
+
+```{r setup}
+#| include: false
+library(tidyverse)
+library(tidymodels)
+library(dplyr)
+library(ggformula)
+library(ggplot2) 
+library(GGally)
+library(mosaic)
+library(ranger)
+library(vip)
+library(caret)
+library(ggfortify)
+library(tibble)
+library(poLCA)
+tidymodels_prefer(quiet = TRUE) 
+```
+
+```{r}
+df <- read.csv('conversion_predictors_of_clinically_isolated_syndrome_to_multiple_sclerosis.csv')
+```
+
+Exploratory Data Analysis:
+```{r}
+str(df) # All quantitative variables - misleading
+# everything except for age and schooling should be qualitative.
+```
+```{r}
+# Converting all categorical variables to factors
+df$Gender <- as.factor(df$Gender)
+df$Breastfeeding <- as.factor(df$Breastfeeding)
+df$Varicella <- as.factor(df$Varicella)
+df$Initial_Symptom <- as.factor(df$Initial_Symptom)
+df$Mono_or_Polysymptomatic <- as.factor(df$Mono_or_Polysymptomatic)
+df$Oligoclonal_Bands <- as.factor(df$Oligoclonal_Bands)
+df$LLSSEP <- as.factor(df$LLSSEP)
+df$ULSSEP <- as.factor(df$ULSSEP)
+df$VEP <- as.factor(df$VEP)
+df$BAEP <- as.factor(df$BAEP)
+df$Periventricular_MRI <- as.factor(df$Periventricular_MRI)
+df$Cortical_MRI <- as.factor(df$Cortical_MRI)
+df$Infratentorial_MRI <- as.factor(df$Infratentorial_MRI)
+df$Spinal_Cord_MRI <- as.factor(df$Spinal_Cord_MRI)
+df$Initial_EDSS <- as.factor(df$Initial_EDSS)
+df$Final_EDSS <- as.factor(df$Final_EDSS)
+df$group <- as.factor(df$group)
+```
+
+```{r}
+# Checking for missing data points
+missing_counts <- colSums(is.na(df))
+missing_counts
+```
+Many missing values for EDSS (148 of 273 observations - over 54% -> also they seem to be missing when CDMS = positive) - however, there are likely more missing values with val = 3.
+
+Missing values that are not NA:
+```{r}
+mosaic::count(df$Breastfeeding==3)
+```
+
+```{r}
+mosaic::count(df$Oligoclonal_Bands==2)
+```
+
+```{r}
+mosaic::count(df$Varicella==3)
+```
+
+```{r}
+mosaic::count(df$Mono_or_Polysymptomatic==3)
+```
+
+```{r}
+# Getting rid of unwanted columns and removing small amounts of NA data
+df$X <- NULL
+df$Initial_EDSS <- NULL
+df$Final_EDSS <- NULL
+df <- df |> filter(!if_any(Schooling, is.na))
+df <- df |> filter(!if_any(Initial_Symptom, is.na))
+```
+
+```{r}
+# Frequency plot of CDMS
+ggplot(df, aes(x = group)) +
+  geom_bar() +
+  labs(x = "Group", y = "Frequency", title = "Frequency of Each Group") +
+  theme_minimal()
+```
+Roughly equal distribution of target variable.
+
+```{r}
+# CDMS frequency by genders
+freq_table <- df|>
+  group_by(group, Gender)|>
+  summarise(Frequency = n(), .groups = "drop")
+freq_table
+
+ggplot(df, aes(x = Gender, fill = group)) +
+  geom_bar(position = "dodge") +
+  labs(x = "Gender", y = "Frequency", title = "Frequency of Each Group by Gender") +
+  theme_minimal()
+```
+GROUP: 1 = CDMS (125), 2 = non-CDMS (146) GENDER: 1 = Male (105), 2 = Female(166) Observation: More female participants tested negative for CDMS despite prior studies indicating that CDMS occurs twice as often in women than in men.
+
+```{r}
+# CDMS Frequency by Varicella
+freq_table <- df|>
+  group_by(group, Varicella)|>
+  summarise(Frequency = n(), .groups = "drop")
+freq_table
+
+ggplot(df, aes(x = Varicella, fill = group)) +
+  geom_bar(position = "dodge") +
+  labs(x = "Varicella", y = "Frequency", title = "Frequency of Each Group by Varicella") +
+  theme_minimal()
+```
+
+```{r}
+#CDMS Frequency by years of schooling
+df_binned <- df |>
+  mutate(Schooling_Range = cut(Schooling,
+                               breaks = c(0, 5, 10, 15, 20, Inf),
+                               labels = c("0-5", "5-10", "10-15", "15-20", "20+"),
+                               right = FALSE))
+
+# Summarize frequency of CDMS by Schooling Range
+freq_table <- df_binned |>
+  group_by(Schooling_Range, group) |>
+  summarise(Frequency = n(), .groups = "drop")
+
+print(freq_table)
+
+# Bar graph with Schooling ranges and frequency
+ggplot(freq_table, aes(x = Schooling_Range, y = Frequency, fill = group)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Schooling Range (Years)", y = "Frequency", title = "Frequency of CDMS by Schooling Range") +
+  theme_minimal()
+```
+
+Unsupervised Learning for EDA:
+PCA but with dummy variables:
+
+We replace missing values with the mode to:
+1) Preserve categorical consistency - 'unknown' should not be treated as a real category.
+2) Handle relatively small amounts of missing values
+3) Prevent computational issues like with PCA or with our future model building like with KNN for interpretability.
+
+```{r}
+# Data preprocessing for PCA
+df_new <- read.csv('conversion_predictors_of_clinically_isolated_syndrome_to_multiple_sclerosis.csv')
+
+# Function to replace all occurrences of 3 with the mode of x
+replace_with_mode <- function(x) {
+  mode_value <- names(sort(table(x), decreasing = TRUE))[1]  
+  x <- ifelse(x == 3, as.numeric(mode_value), x)
+  return(x)
+}
+
+# Function to replace all occurrences of 2 with the mode of x - for Oligoclonal_Bands only
+replace_with_mode2 <- function(x) {
+  mode_value <- names(sort(table(x), decreasing = TRUE))[1]
+  x <- ifelse(x == 2, as.numeric(mode_value), x)  
+  return(x)
+}
+
+df_new$Initial_EDSS <- NULL
+df_new$Final_EDSS <- NULL
+
+# Apply the replacement functions to specific columns and remove rows with NA values
+df_new <- df_new |>
+  mutate(
+    Breastfeeding = replace_with_mode(Breastfeeding),    
+    Varicella = replace_with_mode(Varicella),      
+    Mono_or_Polysymptomatic = replace_with_mode(Mono_or_Polysymptomatic),  
+    Oligoclonal_Bands = replace_with_mode2(Oligoclonal_Bands) 
+  ) |>
+  na.omit() 
+
+# Preserve the 'group' column before further transformations
+group <- df_new$group
+
+# Re-apply the replacement functions 
+df_new <- df_new |>
+  mutate(
+    Breastfeeding = replace_with_mode(Breastfeeding),
+    Varicella = replace_with_mode(Varicella),
+    Mono_or_Polysymptomatic = replace_with_mode(Mono_or_Polysymptomatic),
+    Oligoclonal_Bands = replace_with_mode2(Oligoclonal_Bands)
+  )
+
+# Add the preserved 'group' column back to df_new and remove any new NAs
+df_new <- df_new |>
+  mutate(group = group) |>  
+  na.omit()
+
+df_new$X <- NULL
+
+# Separate numeric columns from non-numeric columns
+numeric_cols <- df_new |>
+  select(where(is.numeric))   
+non_numeric_cols <- df_new |>
+  select(-where(is.numeric))  
+
+# Scale numeric columns to have mean = 0 and standard deviation = 1
+scaled_numeric_cols <- as.data.frame(scale(numeric_cols))
+
+# Combine the scaled numeric columns with the non-numeric columns
+df_new <- cbind(scaled_numeric_cols, non_numeric_cols)
+
+df_new$group <- group
+
+str(df_new)
+```
+```{r}
+pc <- df_new |>
+  select(-group) |>  
+  prcomp()
+```
+
+```{r}
+summary(pc)
+```
+```{r}
+autoplot(pc, data=df_new, colour='group')
+```
+```{r}
+# Bar graphs of factor loadings for PC1 and PC2
+factor_loadings <- pc$rotation
+
+factor_loadings_df <- as.data.frame(factor_loadings) |>
+  rownames_to_column(var = "Feature") |>
+  pivot_longer(
+    cols = starts_with("PC"), 
+    names_to = "PC", 
+    values_to = "Loading"
+  )
+
+factor_loadings_df <- factor_loadings_df |>
+  filter(PC %in% c("PC1", "PC2"))
+
+ggplot(factor_loadings_df, aes(x = Loading, y = Feature, fill = Feature)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  facet_wrap(~PC, scales = "free") +
+  theme_minimal() +
+  labs(
+    title = "Factor Loadings for PC1 to PC2",
+    x = "Loading Value",
+    y = "Feature"
+  )
+```
+
+Latent Class Analysis (LCA):  Statistical method for finding groups of related cases from multivariate categorical data. Concerned with the structure of classes. Research question: how many latent variables underlie a set of categorical observed variables?
+
+```{r}
+#Preprocessing for LCA - using factor variables
+df2 <- df
+df2 <- df2 |>
+  mutate(
+    Breastfeeding = replace_with_mode(Breastfeeding),
+    Varicella = replace_with_mode(Varicella),
+    Mono_or_Polysymptomatic = replace_with_mode(Mono_or_Polysymptomatic),
+    Oligoclonal_Bands = replace_with_mode2(Oligoclonal_Bands)
+  ) |>
+  na.omit()
+df2$Breastfeeding <- as.factor(df2$Breastfeeding)
+df2$Varicella <- as.factor(df2$Varicella)
+df2$Mono_or_Polysymptomatic <- as.factor(df2$Mono_or_Polysymptomatic)
+df2$Oligoclonal_Bands <- as.factor(df2$Oligoclonal_Bands)
+```
+
+```{r}
+#Running LCA
+f <- cbind(Gender, Breastfeeding, Varicella, Mono_or_Polysymptomatic, Oligoclonal_Bands, LLSSEP, ULSSEP, VEP, BAEP, Periventricular_MRI, Cortical_MRI, Infratentorial_MRI, Spinal_Cord_MRI)~1
+m1 <- poLCA(f, data=df2, nclass=2, graphs=TRUE, na.rm=TRUE)
+```
+```{r}
+df2$latent_class_m1 <- m1$predclass
+truth_table <- table(Predicted = df2$latent_class_m1, Actual = df2$group)
+truth_table
+```
+Accuracy is poor at about 37%, LCA latent class assignments did not align well with the actual group labels. Disregarding findings from LCA.
+
+Takeaways from EDA:
+We will use the information on the important factors from PCA to guide our model building process. EDA showed that our data was nicely proportioned and showed some signs as to which predictors were important, what data preprocessing we needed and what predictors we needed to drop.
+
+
