@@ -292,4 +292,3 @@ Accuracy is poor at about 37%, LCA latent class assignments did not align well w
 Takeaways from EDA:
 We will use the information on the important factors from PCA to guide our model building process. EDA showed that our data was nicely proportioned and showed some signs as to which predictors were important, what data preprocessing we needed and what predictors we needed to drop.
 
-
