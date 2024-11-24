@@ -17,6 +17,7 @@ library(GGally)
 library(mosaic)
 library(ranger)
 library(vip)
+library(leaps)
 library(caret)
 tidymodels_prefer(quiet = TRUE) 
 
@@ -46,8 +47,6 @@ df$Periventricular_MRI <- as.factor(df$Periventricular_MRI)
 df$Cortical_MRI <- as.factor(df$Cortical_MRI)
 df$Infratentorial_MRI <- as.factor(df$Infratentorial_MRI)
 df$Spinal_Cord_MRI <- as.factor(df$Spinal_Cord_MRI)
-df$Initial_EDSS <- as.factor(df$Initial_EDSS)
-df$Final_EDSS <- as.factor(df$Final_EDSS)
 df$group <- as.factor(df$group)
 
 df <- df |> filter(!if_any(Schooling, is.na))
@@ -79,7 +78,7 @@ model <- glm(group ~ Gender + Age + Schooling + Initial_Symptom + Mono_or_Polysy
 summary(model)
 
 
-# Breastfeeding, Varicella, LLSSEP, ULSSEP, VEP, Cortical
+# Got rid of Breastfeeding, Varicella, LLSSEP, ULSSEP, VEP, Cortical
 
 logit_mod <- logistic_reg() |>
   set_mode("classification") |>
@@ -128,7 +127,7 @@ k_grid <- grid_regular(neighbors(range = c(1, 21)), levels = 11)
 
 cv_results <- tune_grid(object = knn_wf, resamples = my_folds, grid = k_grid)
 
-# You only really need one of the below, but this is for reference
+
 collect_metrics(cv_results)
 
 autoplot(cv_results,  metric = "accuracy")
@@ -165,3 +164,42 @@ accuracy(knn_preds, group, .pred_class)
 ```
 
 80% accuracy
+
+
+
+Log regression with variables from unsupervised learning
+
+```{r}
+set.seed(45940)
+df_split2 <- initial_split(df, prop = 0.75, strata = group)
+df_train2 <- training(df_split)
+df_test2  <- testing(df_split)
+
+
+#initial model selection
+model2 <- glm(group ~ Gender + Infratentorial_MRI + LLSSEP + Initial_Symptom + Mono_or_Polysymptomatic + ULSSEP  + BAEP + Periventricular_MRI + Spinal_Cord_MRI, data = df_train2, family = binomial)
+
+summary(model2)
+
+# Using variables from unsupervised learning
+
+logit_mod2 <- logistic_reg() |>
+  set_mode("classification") |>
+  set_engine("glm")
+
+df_rec2 <- recipe(group ~ Gender + Infratentorial_MRI + LLSSEP + Initial_Symptom + Mono_or_Polysymptomatic + ULSSEP  + BAEP + Periventricular_MRI + Spinal_Cord_MRI, data = df_train2, family = binomial) |>
+  step_naomit()
+
+df_logit_wf2 <- workflow() |>
+  add_recipe(df_rec2) |>
+  add_model(logit_mod2)
+
+df_fit2 <- df_logit_wf2 |> fit(data = df_train2)
+
+df_predictions2 <- augment(df_fit2, new_data = df_test2)
+
+conf_mat(df_predictions2, truth = group, estimate = .pred_class)
+
+accuracy(df_predictions2, group, .pred_class)
+```
+
