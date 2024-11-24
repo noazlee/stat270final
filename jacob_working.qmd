@@ -17,6 +17,7 @@ library(GGally)
 library(mosaic)
 library(ranger)
 library(vip)
+library(leaps)
 library(caret)
 tidymodels_prefer(quiet = TRUE) 
 
@@ -127,7 +128,7 @@ k_grid <- grid_regular(neighbors(range = c(1, 21)), levels = 11)
 
 cv_results <- tune_grid(object = knn_wf, resamples = my_folds, grid = k_grid)
 
-# You only really need one of the below, but this is for reference
+
 collect_metrics(cv_results)
 
 autoplot(cv_results,  metric = "accuracy")
