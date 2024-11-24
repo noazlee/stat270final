@@ -28,7 +28,6 @@ library(klaR)
 tidymodels_prefer(quiet = TRUE) 
 ```
 
-
 ```{r}
 # Data preprocessing - copied from EDA section
 df <- read.csv('conversion_predictors_of_clinically_isolated_syndrome_to_multiple_sclerosis.csv')
@@ -81,6 +80,7 @@ df$Oligoclonal_Bands <- as.factor(df$Oligoclonal_Bands)
 ```
 
 TRAIN, TEST, VALIDATION SPLIT - 70/15/15 SPLIT
+
 ```{r}
 set.seed(8080)
 df_split <- df |> initial_split(prop = 0.7, strata = group)
@@ -91,8 +91,8 @@ df_test <- testing(df_testing_split)
 df_validation <- training(df_testing_split)
 ```
 
-
 Logistic Regression:
+
 ```{r}
 set.seed(8080)
 
@@ -123,9 +123,11 @@ conf_mat(df_predictions, truth = group, estimate = .pred_class)
 
 accuracy(df_predictions, group, .pred_class)
 ```
+
 78% Accuracy on the validation set.
 
 KNN:
+
 ```{r}
 # Using grid-search 10 fold cross validation to find optimal k - params informed from PCA factor loading
 conflicts_prefer(kknn::contr.dummy)
@@ -152,9 +154,11 @@ cv_results <- tune_grid(object = knn_wf, resamples = my_folds, grid = k_grid)
 collect_metrics(cv_results)
 autoplot(cv_results,  metric = "accuracy")
 ```
+
 Choosing 7 NN to reduce chance of overfitting.
 
 Final KNN Model:
+
 ```{r}
 conflicts_prefer(kknn::contr.dummy) # packages were conflicting with step_dummy
 set.seed(8080)
@@ -179,14 +183,11 @@ knn_preds <- augment(knn_model, new_data = df_validation)
 conf_mat(knn_preds, truth = group, estimate = .pred_class)
 accuracy(knn_preds, group, .pred_class)
 ```
+
 Bad accuracy - 68%
 
-
-
-
-
-
 LDA:
+
 ```{r}
 lda_model <- discrim_linear() |> 
   set_engine("MASS") |>
@@ -213,10 +214,16 @@ conf_mat(lda_pred, truth = group, estimate = .pred_class)
 accuracy(lda_pred, truth = group, estimate = .pred_class)
 yardstick::specificity(lda_pred, truth = group, estimate = .pred_class) # good specificity
 yardstick::sensitivity(lda_pred, truth = group, estimate = .pred_class) # worse sensitivity
+yardstick::roc_auc(
+  data = lda_pred,
+  group,
+  .pred_1,
+  event_level = "first"
+)
 ```
 
-
 Naive Bayes:
+
 ```{r}
 nb_model <- naive_Bayes() |> 
   set_engine("klaR") |>
@@ -234,12 +241,20 @@ nb_fit <- nb_wf |> fit(data = df_train)
 nb_pred <- nb_fit |> augment(new_data = df_validation)
 conf_mat(nb_pred, truth = group, estimate = .pred_class)
 ```
+
 ```{r}
 # Model metrics
 accuracy(nb_pred, truth = group, estimate = .pred_class)
 yardstick::specificity(nb_pred, truth = group, estimate = .pred_class)
 yardstick::sensitivity(nb_pred, truth = group, estimate = .pred_class) 
+yardstick::roc_auc(
+  data = nb_pred,
+  group,
+  .pred_1,
+  event_level = "first"
+)
 ```
+
 Better accuracy, specificity and sensitivity than LDA.
 
 ```{r}
@@ -247,11 +262,8 @@ nb_details <- nb_fit$fit # Run later for interpretability of naive bayes
 nb_details
 ```
 
-
-
-
-
 Random Forest:
+
 ```{r}
 # Grid-search 10 fold cross validation to select number of trees and m
 set.seed(8080)
@@ -291,9 +303,11 @@ best_cc <- select_by_one_std_err(
 autoplot(ranger_tune,  metric = "accuracy")
 best_cc
 ```
+
 Moving forward with m=4 and tress=160.
 
 Final RF model:
+
 ```{r}
 set.seed(8080)
 
@@ -322,7 +336,14 @@ conf_mat(rf_pred_best, truth = group, estimate = .pred_class)
 accuracy(rf_pred_best, truth = group, estimate = .pred_class)
 yardstick::specificity(rf_pred_best, truth = group, estimate = .pred_class)
 yardstick::sensitivity(rf_pred_best, truth = group, estimate = .pred_class) 
+yardstick::roc_auc(
+  data = nb_pred,
+  group,
+  .pred_1,
+  event_level = "first"
+)
 ```
+
 metrics: worse than nb slightly
 
 ```{r}
@@ -330,20 +351,28 @@ metrics: worse than nb slightly
 vip::vip(rf_fit_best)
 ```
 
-We have chosen random forest - time to evaluate it on the test set.
-TEST SET:
+We have chosen random forest - time to evaluate it on the test set. TEST SET:
+
 ```{r}
 rf_pred_best <- augment(rf_fit_best, new_data = df_test)
 conf_mat(rf_pred_best, truth = group, estimate = .pred_class)
 ```
+
 ```{r}
 # Model metrics
 accuracy(rf_pred_best, truth = group, estimate = .pred_class)
 yardstick::specificity(rf_pred_best, truth = group, estimate = .pred_class)
 yardstick::sensitivity(rf_pred_best, truth = group, estimate = .pred_class) 
+yardstick::roc_auc(
+  data = nb_pred,
+  group,
+  .pred_1,
+  event_level = "first"
+)
 ```
 
 Analysing misclassifications:
+
 ```{r}
 rf_pred_best <- rf_pred_best |> 
   mutate(
@@ -356,10 +385,12 @@ misclassified_cases <- rf_pred_best |> filter(misclassified == TRUE)
 ```{r}
 misclassified_cases
 ```
+
 ```{r}
 # checking how many time initial_symptom == 4 or 8 appear in df
 mosaic::sum(df$Initial_Symptom == 4 | df$Initial_Symptom == 8)
 ```
 
-
-
+```{r}
+rf_pred_best
+```
