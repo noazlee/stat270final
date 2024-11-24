@@ -343,3 +343,23 @@ yardstick::specificity(rf_pred_best, truth = group, estimate = .pred_class)
 yardstick::sensitivity(rf_pred_best, truth = group, estimate = .pred_class) 
 ```
 
+Analysing misclassifications:
+```{r}
+rf_pred_best <- rf_pred_best |> 
+  mutate(
+    misclassified = ifelse(group != .pred_class, TRUE, FALSE)
+  )
+
+misclassified_cases <- rf_pred_best |> filter(misclassified == TRUE)
+```
+
+```{r}
+misclassified_cases
+```
+```{r}
+# checking how many time initial_symptom == 4 or 8 appear in df
+mosaic::sum(df$Initial_Symptom == 4 | df$Initial_Symptom == 8)
+```
+
+
+
