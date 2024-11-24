@@ -127,7 +127,7 @@ accuracy(df_predictions, group, .pred_class)
 
 KNN:
 ```{r}
-# Using grid-search 10 fold cross validation to find optimal k
+# Using grid-search 10 fold cross validation to find optimal k - params informed from PCA factor loading
 conflicts_prefer(kknn::contr.dummy)
 set.seed(8080)
 
@@ -156,7 +156,7 @@ Choosing 7 NN to reduce chance of overfitting.
 
 Final KNN Model:
 ```{r}
-conflicts_prefer(kknn::contr.dummy)
+conflicts_prefer(kknn::contr.dummy) # packages were conflicting with step_dummy
 set.seed(8080)
 
 knn_model <- nearest_neighbor(neighbors = 7) |>
@@ -328,5 +328,18 @@ metrics: worse than nb slightly
 ```{r}
 # Most important variables in determining CDMS in Random Forest
 vip::vip(rf_fit_best)
+```
+
+We have chosen random forest - time to evaluate it on the test set.
+TEST SET:
+```{r}
+rf_pred_best <- augment(rf_fit_best, new_data = df_test)
+conf_mat(rf_pred_best, truth = group, estimate = .pred_class)
+```
+```{r}
+# Model metrics
+accuracy(rf_pred_best, truth = group, estimate = .pred_class)
+yardstick::specificity(rf_pred_best, truth = group, estimate = .pred_class)
+yardstick::sensitivity(rf_pred_best, truth = group, estimate = .pred_class) 
 ```
 
