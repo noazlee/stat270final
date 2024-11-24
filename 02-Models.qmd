@@ -7,7 +7,7 @@ markdown:
     wrap: 72
 ---
 
-```{r}
+```{r setup}
 #| include: false
 library(tidyverse)
 library(tidymodels)
