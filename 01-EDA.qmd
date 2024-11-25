@@ -315,8 +315,6 @@ cramers_v <- function(x, y) {
 
 ```{r}
 
-df$group <-NULL ## remove group because it is our repsonse variable.
-
 cat_vars <- df |> select_if(is.factor)
 
 ##Compute pairwise Cramér's V for categorical variables
@@ -324,7 +322,7 @@ cramers_matrix <- outer(
  names(cat_vars), names(cat_vars), 
   Vectorize(function(x, y) cramers_v(cat_vars[[x]], cat_vars[[y]]))
 )
-## will return an error but its because our data set is small I think
+## will give an error warning, but it is probably due to the small size of the dataset
 ```
 
 ```{r}
