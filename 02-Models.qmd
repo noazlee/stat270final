@@ -394,3 +394,55 @@ mosaic::sum(df$Initial_Symptom == 4 | df$Initial_Symptom == 8)
 ```{r}
 rf_pred_best
 ```
+
+
+
+CHARTS FOR MODEL CARD:
+```{r}
+# Group data by predictors like age and gender
+subgroups <- rf_pred_best |>
+  mutate(Age_Group = ifelse(Age < 40, "young", "old")) |>
+  group_by(Gender, Age_Group)
+
+# Calculate rates for each subgroup
+rates <- subgroups |>
+  summarise(
+    FPR = base::mean(.pred_class == 1 & group == 2),
+    FNR = base::mean( .pred_class == 2 &  group == 1),
+    FDR = base::sum( .pred_class == 1 &  group == 2) /
+           base::sum( .pred_class == 1),
+    FOR = base::sum(.pred_class == 2 & group == 1) /
+           base::sum( .pred_class == 2),
+    .groups = "drop"
+  )
+```
+
+```{r}
+rates
+
+rates <- rates |>
+  mutate(across(FPR:FOR, ~ ifelse(. == 0, 0.01, .))) # Adding 0.01 so that columns still show up in the graph
+```
+
+```{r}
+# Reshape for plotting
+rates_long <- rates |>
+  pivot_longer(
+    cols = c(FPR, FNR, FDR, FOR),
+    names_to = "Metric",
+    values_to = "Rate"
+  )
+
+# Final Plot
+ggplot(rates_long, aes(x = Age_Group, y = Rate, fill = Gender)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~Metric, scales = "free_y") +
+  labs(
+    title = "Error Rates by Gender and Age Group",
+    x = "Age Group",
+    y = "Rate"
+  ) +
+  theme_minimal()
+
+```
+
