@@ -22,6 +22,8 @@ library(caret)
 library(ggfortify)
 library(tibble)
 library(poLCA)
+library(vcd)
+library(corrplot)
 tidymodels_prefer(quiet = TRUE) 
 ```
 
@@ -292,3 +294,66 @@ Accuracy is poor at about 37%, LCA latent class assignments did not align well w
 Takeaways from EDA:
 We will use the information on the important factors from PCA to guide our model building process. EDA showed that our data was nicely proportioned and showed some signs as to which predictors were important, what data preprocessing we needed and what predictors we needed to drop.
 
+
+
+Cramers v Heat Plot:
+```{r}
+## creating the cramers V heatplot. 
+conflicted::conflicts_prefer(mosaic::sum)
+conflicted::conflicts_prefer(mosaic::min)
+
+# Function to calculate Cramér's V, code from chat but I dont know if I should add a source or not 
+cramers_v <- function(x, y) {
+  tbl <- table(x, y)
+  chi2 <- chisq.test(tbl)$statistic
+  n <- sum(tbl)
+  min_dim <- min(dim(tbl)) - 1
+  sqrt(chi2 / (n * min_dim))
+}
+
+```
+
+```{r}
+
+df$group <-NULL ## remove group because it is our repsonse variable.
+
+cat_vars <- df |> select_if(is.factor)
+
+##Compute pairwise Cramér's V for categorical variables
+cramers_matrix <- outer(
+ names(cat_vars), names(cat_vars), 
+  Vectorize(function(x, y) cramers_v(cat_vars[[x]], cat_vars[[y]]))
+)
+## will return an error but its because our data set is small I think
+```
+
+```{r}
+
+# Convert Cramér's V matrix to tidy format
+cramers_df <- as.data.frame(as.table(cramers_matrix))
+
+# Check column names in cramers_df
+colnames(cramers_df) <- c("Variable1", "Variable2", "CramersV")
+
+# Ensure Variable1 and Variable2 correspond to the variable names
+cramers_df$Variable1 <- factor(cramers_df$Variable1, labels = names(cat_vars))
+cramers_df$Variable2 <- factor(cramers_df$Variable2, labels = names(cat_vars))
+
+```
+
+```{r}
+
+variable_names <- colnames(cat_vars)
+
+# Plot heat map
+ggplot(cramers_df, aes(Variable1, Variable2, fill = CramersV)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0.5) +
+  theme_minimal() +
+  scale_x_discrete(labels = variable_names) +  
+  scale_y_discrete(labels = variable_names) +
+  theme() +
+  labs(title = "Cramér's V Heatmap", x = "", y = "") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```

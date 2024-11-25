@@ -17,7 +17,6 @@ library(tibble)
 library(poLCA)
 library(vcd)
 library(corrplot)
-##install.packages("corrplot")
 tidymodels_prefer(quiet = TRUE) 
 ```
 
